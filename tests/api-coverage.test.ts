@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { defaultFortnoxOperations } from '../src/operations/index.js';
 import { describe, expect, it } from 'vitest';
 import {
   calculateApiCoverage,
@@ -116,5 +118,46 @@ describe('API coverage manifest core', () => {
     );
     expect(details).not.toContain('\u001b');
     expect(details).toContain('danger\\n\\u001b[31m');
+  });
+});
+
+describe('exposed SIE coverage', () => {
+  it('records the public general-ledger operation as implemented core coverage', () => {
+    expect(defaultFortnoxOperations.getGeneralLedger).toBeTypeOf('function');
+    const document = JSON.parse(
+      readFileSync(new URL('../api-spec/api-implementation-map.json', import.meta.url), 'utf8'),
+    );
+    const sie = document.families.find((family: { id: string }) => family.id === 'fortnox-sie');
+    expect(sie.classification).toBe('complete');
+    expect(sie.operations.implemented).toHaveLength(1);
+    expect(sie.operations.excluded).toEqual([]);
+    expect(sie.evidence).toEqual({
+      operationExports: ['getGeneralLedger'],
+      mcpTools: ['fortnox_general_ledger'],
+      cliCommands: [['general-ledger', 'list']],
+    });
+  });
+
+  it.each(['excluded', 'blocked'] as const)(
+    'rejects %s classifications with implemented operations',
+    (classification) => {
+      expect(() =>
+        calculateApiCoverage([partial({ classification, rationale: 'Out of scope.' })]),
+      ).toThrow(/cannot have implemented operations or exposure evidence/);
+    },
+  );
+
+  it('rejects exposure evidence even if implemented identities are missing', () => {
+    expect(() =>
+      calculateApiCoverage([
+        partial({
+          classification: 'excluded',
+          implementedOperationIdentities: [],
+          missingOperationIdentities: [],
+          excludedOperationIdentities: ['operation-a', 'operation-b'],
+          rationale: 'Out of scope.',
+        }),
+      ]),
+    ).toThrow(/cannot have implemented operations or exposure evidence/);
   });
 });

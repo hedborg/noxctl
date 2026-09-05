@@ -458,13 +458,13 @@
     },
     {
       "id": "fortnox-sie",
-      "classification": "excluded",
+      "classification": "complete",
       "publicOperationCount": 1,
-      "implementedCount": 0,
+      "implementedCount": 1,
       "missingCount": 0,
-      "excludedCount": 1,
-      "stateHash": "28037f492013b466b28ca882d3ad553ce634561c74bd7b02100753e0ed1af8c1",
-      "rationale": "This product family is explicitly outside the initial open-source core API boundary."
+      "excludedCount": 0,
+      "stateHash": "f0f6993f6bf42211f292474f8d3c656077d21cbfc5d5ff0ccb77b0a5376e6eb7",
+      "rationale": "Read-only SIE4 general-ledger export is part of the supported bookkeeping core."
     },
     {
       "id": "fortnox-supplierinvoiceaccruals",

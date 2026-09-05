@@ -107,6 +107,25 @@ describe('getGeneralLedger', () => {
     });
   });
 
+  it('formats and sorts by row dates while retaining the voucher-date fallback', async () => {
+    const transport = stubTransport();
+    vi.mocked(transport.requestFile).mockResolvedValue({
+      buffer: Buffer.from(SAMPLE_SIE.replace('-1000 ""', '-1000 20260801')),
+      contentType: 'application/octet-stream',
+    });
+    const rows = await createGeneralLedgerOperations(transport).getGeneralLedger({
+      fromDate: '2026-08-01',
+      toDate: '2026-08-31',
+    });
+    expect(rows.map((r) => r.transactionDate)).toEqual([
+      '2026-08-01',
+      '2026-08-03',
+      '2026-08-03',
+      '2026-08-05',
+    ]);
+    expect(rows[0]).toMatchObject({ series: 'B', voucherNumber: '2', credit: 1000 });
+  });
+
   it('splits the signed SIE amount into separate debit/credit columns', async () => {
     const { getGeneralLedger } = createGeneralLedgerOperations(stubTransport());
 

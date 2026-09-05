@@ -1227,15 +1227,29 @@
     {
       "id": "fortnox-sie",
       "tagHash": "3d7f1a6cbbc36bcb75e16b950c5907b44392d1aef4b67f44e9203003bd41f3e3",
-      "classification": "excluded",
+      "classification": "complete",
       "operations": {
-        "implemented": [],
-        "missing": [],
-        "excluded": [
+        "implemented": [
           "27f9f290930c9e39895f6788261b48b7157be1b9153fa772175d9624e006ecac"
-        ]
+        ],
+        "missing": [],
+        "excluded": []
       },
-      "rationale": "This product family is explicitly outside the initial open-source core API boundary."
+      "rationale": "Read-only SIE4 general-ledger export is part of the supported bookkeeping core.",
+      "evidence": {
+        "operationExports": [
+          "getGeneralLedger"
+        ],
+        "mcpTools": [
+          "fortnox_general_ledger"
+        ],
+        "cliCommands": [
+          [
+            "general-ledger",
+            "list"
+          ]
+        ]
+      }
     },
     {
       "id": "fortnox-supplierinvoiceaccruals",

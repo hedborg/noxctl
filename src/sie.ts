@@ -1,13 +1,10 @@
 import type { FortnoxTransport } from './fortnox-client.js';
 
-// Fortnox has no public REST endpoint for period-scoped account totals — the
-// obvious path (list vouchers, fetch each one's rows, sum debit/credit) means
-// one HTTP request per voucher, which times out on any real company (#152).
-// GET /3/sie/4 is a separate, undocumented-by-omission endpoint: it returns
-// the whole period's chart of accounts, opening/closing balances and every
-// transaction line in one streamed file, in the standard Swedish SIE format.
-// Parsing that file is the fast path for anything that needs bulk voucher/
-// account data — voucher lists, P&L, balance sheet.
+// Fortnox documents GET /3/sie/{Type} in its OpenAPI specification. Type 4
+// returns transaction rows and balances in one file, avoiding individual
+// voucher-detail requests for the general ledger.
+// Format reference: https://sie.se/wp-content/uploads/2020/05/SIE_filformat_ver_4B_ENGLISH.pdf
+// (sections 5.7 and 5.9: quoted fields and decimal amounts).
 //
 // SIE is a line-oriented text format (Swedish "SIE 4" standard); every
 // meaningful line starts with a `#TAG`. We only parse the tags this codebase
@@ -18,18 +15,18 @@ import type { FortnoxTransport } from './fortnox-client.js';
 export interface SieAccount {
   number: string;
   description: string;
-  /** Skatteverket's "Standardiserat räkenskapsutdrag" code — the official
-   * grouping used for annual-report line items (Nettoomsättning, Övriga
-   * externa kostnader, etc.). Absent for accounts with no SRU mapping. */
+  /** Single SRU code retained for this account. Full tax-report mapping
+   * needs separate support for multiple and sign-dependent SRU codes. */
   sru?: string;
 }
 
 export interface SieTransaction {
   series: string;
   voucherNumber: string;
-  /** Voucher transaction date (#VER's own date, not the per-row #TRANS date
-   * override — Fortnox's export does not appear to set the latter). */
+  /** Date from the voucher header (#VER). */
   voucherDate: string;
+  /** Row date (#TRANS), falling back to the voucher date when absent. */
+  transactionDate: string;
   /** Registration date, when present — the 5th #VER field. */
   registrationDate?: string;
   voucherDescription: string;
@@ -63,6 +60,21 @@ export interface ParsedSie {
 // (with the quotes stripped) and a `{...}` run is one token (kept with its
 // braces, for the caller to parse separately — it's a nested object list,
 // e.g. `{1 "2010" 6 "1001"}` for cost-centre + project dimensions).
+function readQuoted(line: string, start: number): { value: string; end: number } {
+  let value = '';
+  for (let i = start + 1; i < line.length; i++) {
+    if (line[i] === '\\' && line[i + 1] === '"') {
+      value += '"';
+      i++;
+    } else if (line[i] === '"') {
+      return { value, end: i + 1 };
+    } else {
+      value += line[i];
+    }
+  }
+  throw new Error('SIE export contains an unterminated quoted field.');
+}
+
 function tokenize(line: string): string[] {
   const tokens: string[] = [];
   let i = 0;
@@ -70,17 +82,17 @@ function tokenize(line: string): string[] {
     while (i < line.length && /\s/.test(line[i]!)) i++;
     if (i >= line.length) break;
     if (line[i] === '"') {
-      let j = i + 1;
-      let value = '';
-      while (j < line.length && line[j] !== '"') {
-        value += line[j];
-        j++;
-      }
+      const { value, end } = readQuoted(line, i);
       tokens.push(value);
-      i = j + 1;
+      i = end;
     } else if (line[i] === '{') {
       let j = i + 1;
-      while (j < line.length && line[j] !== '}') j++;
+      while (j < line.length && line[j] !== '}') {
+        j = line[j] === '"' ? readQuoted(line, j).end : j + 1;
+      }
+      if (j === line.length) {
+        throw new Error('SIE export contains an unterminated object list.');
+      }
       tokens.push(line.slice(i, j + 1));
       i = j + 1;
     } else {
@@ -109,17 +121,26 @@ function parseDimensions(raw: string): { costCenter?: string; project?: string }
   return result;
 }
 
-// Fortnox has never been observed to emit a malformed amount, but if a future
-// export ever does, `Number(x)` on "" or a corrupted token is NaN — and
-// unlike a genuinely missing token (`undefined`, already filtered out before
-// this runs), NaN and Infinity both fail every downstream `> 0`/`< 0`
-// comparison, so debit and credit both end up 0. That is a plausible-looking
-// row with the actual figure silently discarded, not an error. A financial
-// amount does not get that benefit of the doubt: reject it instead.
+// SIE amounts use an optional minus, digits, and at most two decimal places.
+// Check exact minor units before converting to the public number representation:
+// cents must be safe integers, and both fixed-decimal display and JSON number
+// serialization must preserve the input. Reject cent-level rounding loss.
 function parseFiniteAmount(raw: string, context: string): number {
-  const value = Number(raw);
-  if (!Number.isFinite(value)) {
+  if (!/^-?\d+(?:\.\d{1,2})?$/.test(raw)) {
     throw new Error(`SIE export contains a malformed amount "${raw}" (${context}).`);
+  }
+  const [whole, fraction = ''] = raw.replace(/^-/, '').split('.');
+  const normalized = `${BigInt(whole!)}.${fraction.padEnd(2, '0')}`;
+  const cents = BigInt(whole!) * 100n + BigInt(fraction.padEnd(2, '0'));
+  const value = Number(raw);
+  if (cents > BigInt(Number.MAX_SAFE_INTEGER) || Math.abs(value).toFixed(2) !== normalized) {
+    throw new Error(`SIE export contains an unsafe amount "${raw}" (${context}).`);
+  }
+  // JSON uses Number#toString, which can choose a shorter decimal than toFixed
+  // at large magnitudes (e.g. 90071992547409.91 becomes 90071992547409.9).
+  const [serializedWhole, serializedFraction = ''] = Math.abs(value).toString().split('.');
+  if (`${serializedWhole}.${serializedFraction.padEnd(2, '0')}` !== normalized) {
+    throw new Error(`SIE export contains an unsafe amount "${raw}" (${context}).`);
   }
   return value;
 }
@@ -152,7 +173,7 @@ export function parseSie(text: string): ParsedSie {
       continue;
     }
     if (!line.startsWith('#')) continue;
-    const tag = line.slice(1, line.indexOf(' ') === -1 ? undefined : line.indexOf(' '));
+    const tag = line.slice(1).split(/\s/, 1)[0];
 
     if (tag === 'FNAMN') {
       companyName = tokenize(line)[1];
@@ -191,13 +212,14 @@ export function parseSie(text: string): ParsedSie {
       }
     } else if (tag === 'TRANS') {
       const tokens = tokenize(line);
-      const [, account, dims, amount, , text] = tokens;
+      const [, account, dims, amount, transactionDate, text] = tokens;
       if (account && amount !== undefined && currentVoucher && insideVoucherBlock) {
         const { costCenter, project } = dims ? parseDimensions(dims) : {};
         transactions.push({
           series: currentVoucher.series,
           voucherNumber: currentVoucher.number,
           voucherDate: currentVoucher.date,
+          transactionDate: transactionDate || currentVoucher.date,
           registrationDate: currentVoucher.regDate,
           voucherDescription: currentVoucher.description,
           account,

@@ -16,16 +16,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   download them. Unlike voucher attachments, this reaches the original
   document directly, so it works for `unbooked`/`authorizepending` invoices —
   before they've been bookkept into a voucher. No new scope required.
-- **General ledger: bookkeeping transactions with amounts, for a date range,
-  in one fast call.** `noxctl general-ledger list --from <date> --to <date>`
-  and `fortnox_general_ledger` return one row per posting (date, voucher,
-  account, debit, credit, text), optionally filtered by account or voucher
-  series. Unlike `fortnox_list_vouchers` (no amounts) or building an amount
-  by fetching every voucher's rows individually (times out on any real
-  company — #152), this reads Fortnox's SIE4 export: the whole period's
-  transactions in one streamed file instead of one request per voucher.
-  Verified against a company with ~10,900 vouchers/year: full-year export
-  and parse completes in ~2 seconds versus a timeout the old way.
+- **General ledger: bookkeeping transactions with amounts for a date range.**
+  `noxctl general-ledger list --from <date> --to <date>` and
+  `fortnox_general_ledger` return one row per posting (date, voucher, account,
+  debit, credit, text), with optional account and series filters. Reads one
+  SIE4 export for the period, with a financial-year lookup when needed.
+  This avoids individual voucher-detail requests;
+  `fortnox_list_vouchers` does not include transaction amounts.
+  Row dates override voucher dates when present. Escaped quotation marks are
+  decoded, tab separators are accepted, and malformed amounts or amounts that
+  lose cent precision are rejected. Thanks to @hedborg for the implementation
+  (#161).
 
 ## [0.9.0] - 2026-08-31
 

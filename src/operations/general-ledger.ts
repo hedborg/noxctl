@@ -62,7 +62,7 @@ export function createGeneralLedgerOperations(transport: FortnoxTransport) {
       .map((t): GeneralLedgerEntry => ({
         series: t.series,
         voucherNumber: t.voucherNumber,
-        transactionDate: formatSieDate(t.voucherDate),
+        transactionDate: formatSieDate(t.transactionDate),
         registrationDate: t.registrationDate ? formatSieDate(t.registrationDate) : undefined,
         account: t.account,
         accountDescription: parsed.accounts.get(t.account)?.description,

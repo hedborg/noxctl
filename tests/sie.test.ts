@@ -299,3 +299,89 @@ describe('fetchSie', () => {
     expect(result.transactions[0]?.voucherDescription).toBe('Intäktsränta');
   });
 });
+
+describe('SIE4 amount and field grammar', () => {
+  const transaction = (amount: string) =>
+    `#VER A 1 20260805 "Sale"\n{\n#TRANS 1930 {} ${amount}\n}`;
+
+  it.each([
+    '""',
+    '" "',
+    '0x10',
+    '1e3',
+    '+10',
+    '.50',
+    '1.',
+    '1,50',
+    '1.001',
+    'NaN',
+    'Infinity',
+    '-Infinity',
+    '9007199254740992',
+    '90071992547409.92',
+    '90071992547409.91',
+    '-90071992547409.91',
+    '70368744177664.01',
+  ])('rejects invalid or imprecise amount %s in every amount tag', (raw) => {
+    for (const input of [transaction(raw), `#IB 0 1930 ${raw}`, `#UB 0 1930 ${raw}`]) {
+      expect(() => parseSie(input)).toThrow(/malformed|unsafe/i);
+    }
+  });
+
+  it.each(['0', '123', '-123', '123.4', '-123.45', '0.01', '0001.20', '999999999999.99'])(
+    'accepts SIE decimal amount %s in every amount tag',
+    (raw) => {
+      const result = parseSie(`${transaction(raw)}\n#IB 0 1930 ${raw}\n#UB 0 1930 ${raw}`);
+      expect(result.transactions[0]?.amount).toBe(Number(raw));
+      expect(result.openingBalances[0]?.balance).toBe(Number(raw));
+      expect(result.closingBalances[0]?.balance).toBe(Number(raw));
+    },
+  );
+
+  it('uses the row date, with fallback for empty and omitted dates', () => {
+    const result = parseSie(
+      '#VER A 1 20260805 "Sale"\n{\n' +
+        '#TRANS 1930 {} 1 20260807 "Later"\n#TRANS 1930 {} 2 "" "Fallback"\n' +
+        '#TRANS 1930 {} 3\n}',
+    );
+    expect(result.transactions.map((t) => t.transactionDate)).toEqual([
+      '20260807',
+      '20260805',
+      '20260805',
+    ]);
+    expect(result.transactions.map((t) => t.voucherDate)).toEqual([
+      '20260805',
+      '20260805',
+      '20260805',
+    ]);
+  });
+
+  it('decodes escaped quotes without shifting subsequent fields or removing other backslashes', () => {
+    const result = parseSie(String.raw`#VER A 1 20260805 "Sale \"special\" C:\docs" 20260806
+{
+#TRANS 1930 {1 "Cost \"A\"" 6 "Project } A"} 12.50 20260807 "Row \"text\" C:\docs" 0
+}`);
+    expect(result.transactions[0]).toMatchObject({
+      voucherDescription: 'Sale "special" C:\\docs',
+      registrationDate: '20260806',
+      transactionDate: '20260807',
+      amount: 12.5,
+      costCenter: 'Cost "A"',
+      project: 'Project } A',
+      text: 'Row "text" C:\\docs',
+    });
+  });
+
+  it.each([
+    '#VER A 1 20260805 "Unclosed',
+    '#VER A 1 20260805 "Sale"\n{\n#TRANS 1930 {1 "Unclosed} 1\n}',
+    '#VER A 1 20260805 "Sale"\n{\n#TRANS 1930 {1 "Cost" 1\n}',
+  ])('rejects unterminated quoted fields and object lists', (input) => {
+    expect(() => parseSie(input)).toThrow(/unterminated/);
+  });
+
+  it('accepts tabs between record fields', () => {
+    const result = parseSie('#VER\tA\t1\t20260805\t"Sale"\n{\n#TRANS\t1930\t{}\t1.25\n}');
+    expect(result.transactions[0]?.amount).toBe(1.25);
+  });
+});

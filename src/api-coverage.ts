@@ -119,6 +119,18 @@ function validateMapping(mapping: ApiCoverageMapping): void {
   ) {
     throw new Error(`${mapping.classification} mapping ${mapping.id} requires a rationale`);
   }
+  if (
+    (mapping.classification === 'excluded' || mapping.classification === 'blocked') &&
+    (mapping.implementedOperationIdentities.length > 0 ||
+      (mapping.evidence &&
+        (mapping.evidence.operationExports.length > 0 ||
+          mapping.evidence.mcpTools.length > 0 ||
+          mapping.evidence.cliCommands.length > 0)))
+  ) {
+    throw new Error(
+      `${mapping.classification} mapping ${mapping.id} cannot have implemented operations or exposure evidence`,
+    );
+  }
 }
 
 function calculateStateHash(mapping: ApiCoverageMapping): string {

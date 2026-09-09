@@ -62,3 +62,41 @@ describe('accrual operations', () => {
     expect(request).not.toHaveBeenCalled();
   });
 });
+
+describe('supplier invoice accrual read-only fields', () => {
+  it('strips Times from the create payload', async () => {
+    const request = vi.fn().mockResolvedValue({ SupplierInvoiceAccrual: { DocumentNumber: 7 } });
+    const operations = createAccrualOperations({ request } as unknown as FortnoxTransport);
+
+    await operations.createSupplierInvoiceAccrual({
+      SupplierInvoiceNumber: 42,
+      AccrualAccount: 1710,
+      CostAccount: 5010,
+      Period: 'monthly',
+      StartDate: '2026-10-01',
+      EndDate: '2026-12-31',
+      Times: 3,
+      Total: 9630,
+    });
+
+    const body = request.mock.calls[0]?.[1]?.body as {
+      SupplierInvoiceAccrual: Record<string, unknown>;
+    };
+    expect(body.SupplierInvoiceAccrual).not.toHaveProperty('Times');
+    expect(body.SupplierInvoiceAccrual.Total).toBe(9630);
+    expect(body.SupplierInvoiceAccrual.AccrualAccount).toBe(1710);
+  });
+
+  it('strips Times from the update payload', async () => {
+    const request = vi.fn().mockResolvedValue({ SupplierInvoiceAccrual: { DocumentNumber: 7 } });
+    const operations = createAccrualOperations({ request } as unknown as FortnoxTransport);
+
+    await operations.updateSupplierInvoiceAccrual('7', { Times: 3, Total: 9630 });
+
+    const body = request.mock.calls[0]?.[1]?.body as {
+      SupplierInvoiceAccrual: Record<string, unknown>;
+    };
+    expect(body.SupplierInvoiceAccrual).not.toHaveProperty('Times');
+    expect(body.SupplierInvoiceAccrual.Total).toBe(9630);
+  });
+});

@@ -5,12 +5,24 @@ interface AccrualDefinition {
   endpoint: string;
   listKey: string;
   singleKey: string;
+  readOnlyFields?: readonly string[];
 }
 
 function createAccrualResourceOperations(
   transport: FortnoxTransport,
   definition: AccrualDefinition,
 ) {
+  // Server-derived fields Fortnox rejects on write ("Fältet Times är endast
+  // läsbart"), even though its own spec lists them as required on the payload.
+  // Stripping them lets a `get` response be fed back into create/update
+  // unchanged; Fortnox recomputes them from StartDate/EndDate and Period.
+  function stripReadOnlyFields(fields: Record<string, unknown>): Record<string, unknown> {
+    if (!definition.readOnlyFields) return fields;
+    const writable = { ...fields };
+    for (const field of definition.readOnlyFields) delete writable[field];
+    return writable;
+  }
+
   async function list() {
     const raw = await transport.request<Record<string, unknown>>(definition.endpoint);
     return {
@@ -29,7 +41,7 @@ function createAccrualResourceOperations(
   async function create(fields: Record<string, unknown>) {
     const raw = await transport.request<Record<string, unknown>>(definition.endpoint, {
       method: 'POST',
-      body: { [definition.singleKey]: fields },
+      body: { [definition.singleKey]: stripReadOnlyFields(fields) },
     });
     return (raw[definition.singleKey] ?? {}) as Record<string, unknown>;
   }
@@ -37,7 +49,7 @@ function createAccrualResourceOperations(
   async function update(documentNumber: string, fields: Record<string, unknown>) {
     const raw = await transport.request<Record<string, unknown>>(
       `${definition.endpoint}/${documentSegment(documentNumber)}`,
-      { method: 'PUT', body: { [definition.singleKey]: fields } },
+      { method: 'PUT', body: { [definition.singleKey]: stripReadOnlyFields(fields) } },
     );
     return (raw[definition.singleKey] ?? {}) as Record<string, unknown>;
   }
@@ -61,6 +73,7 @@ export function createAccrualOperations(transport: FortnoxTransport) {
     endpoint: 'supplierinvoiceaccruals',
     listKey: 'SupplierInvoiceAccruals',
     singleKey: 'SupplierInvoiceAccrual',
+    readOnlyFields: ['Times'],
   });
   const contracts = createAccrualResourceOperations(transport, {
     endpoint: 'contractaccruals',

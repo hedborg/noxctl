@@ -42,7 +42,6 @@ const payloads = {
       { Account: 1790, Credit: 100 },
     ],
     SupplierInvoiceNumber: 7,
-    Times: 12,
     Total: 1200,
   },
   contract_accrual: {
@@ -126,5 +125,20 @@ describe('accrual tools', () => {
       expect(result.isError, name).toBeFalsy();
     }
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('supplier invoice accrual read-only Times', () => {
+  it('does not advertise Times on the create tool', async () => {
+    const { client } = await setup();
+    const { tools } = await client.listTools();
+    const create = tools.find((t) => t.name === 'fortnox_create_supplier_invoice_accrual');
+
+    expect(create).toBeDefined();
+    expect(Object.keys(create?.inputSchema?.properties ?? {})).not.toContain('Times');
+    // The writable fields Fortnox does derive Times from must still be offered.
+    expect(Object.keys(create?.inputSchema?.properties ?? {})).toEqual(
+      expect.arrayContaining(['StartDate', 'EndDate', 'Period']),
+    );
   });
 });

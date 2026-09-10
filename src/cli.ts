@@ -2267,7 +2267,7 @@ supplierInvoices
   .description('List/filter supplier invoices')
   .option(
     '--filter <filter>',
-    'Filter: cancelled, fullypaid, unpaid, unpaidoverdue, unbooked, pendingpayment',
+    'Filter: cancelled, fullypaid, unpaid, unpaidoverdue, unbooked, pendingpayment, authorizepending',
   )
   .option('--supplier <number>', 'Filter by supplier number')
   .option('--from <date>', 'From date (YYYY-MM-DD)')

@@ -89,9 +89,19 @@ export function registerSupplierInvoiceTools(
     'Lista leverantörsfakturor i Fortnox. Returnerar: GivenNumber, SupplierName, InvoiceDate, DueDate, Total, Balance.',
     {
       filter: z
-        .enum(['fullypaid', 'cancelled', 'unpaid', 'unpaidoverdue', 'unbooked', 'pendingpayment'])
+        .enum([
+          'fullypaid',
+          'cancelled',
+          'unpaid',
+          'unpaidoverdue',
+          'unbooked',
+          'pendingpayment',
+          'authorizepending',
+        ])
         .optional()
-        .describe('Filter: fullypaid, cancelled, unpaid, unpaidoverdue, unbooked, pendingpayment'),
+        .describe(
+          'Filter: fullypaid, cancelled, unpaid, unpaidoverdue, unbooked, pendingpayment, authorizepending',
+        ),
       supplierNumber: z.string().optional().describe('Filtrera på leverantörsnummer'),
       fromDate: z.string().optional().describe('Från datum (YYYY-MM-DD)'),
       toDate: z.string().optional().describe('Till datum (YYYY-MM-DD)'),

@@ -74,6 +74,31 @@ describe('supplier invoice tools', () => {
       const calledUrl = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
       expect(calledUrl).toContain('filter=unpaid');
     });
+
+    it('accepts every filter value the Fortnox spec allows', async () => {
+      const filters = [
+        'cancelled',
+        'fullypaid',
+        'unpaid',
+        'unpaidoverdue',
+        'unbooked',
+        'pendingpayment',
+        'authorizepending',
+      ];
+
+      for (const filter of filters) {
+        mockFetch({ SupplierInvoices: [] });
+
+        const { client } = await setupClientServer();
+        await client.callTool({
+          name: 'fortnox_list_supplier_invoices',
+          arguments: { filter },
+        });
+
+        const calledUrl = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
+        expect(calledUrl).toContain(`filter=${filter}`);
+      }
+    });
   });
 
   describe('fortnox_get_supplier_invoice', () => {

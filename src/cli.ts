@@ -5254,7 +5254,10 @@ for (const definition of accrualResources) {
     .action(async (opts) => {
       const operations = await import('./operations/accruals.js');
       const raw = opts.input === '-' ? readFileSync(0, 'utf-8') : readFileSync(opts.input, 'utf-8');
-      const fields = JSON.parse(raw) as Record<string, unknown>;
+      const fields = operations.prepareAccrualFields(
+        definition.envelope,
+        JSON.parse(raw) as Record<string, unknown>,
+      );
       if (
         !(await confirmMutation(`Create ${definition.command}`, opts, {
           [definition.envelope]: fields,
@@ -5272,7 +5275,10 @@ for (const definition of accrualResources) {
     .action(async (documentNumber: string, opts) => {
       const operations = await import('./operations/accruals.js');
       const raw = opts.input === '-' ? readFileSync(0, 'utf-8') : readFileSync(opts.input, 'utf-8');
-      const fields = JSON.parse(raw) as Record<string, unknown>;
+      const fields = operations.prepareAccrualFields(
+        definition.envelope,
+        JSON.parse(raw) as Record<string, unknown>,
+      );
       if (
         !(await confirmMutation(`Update ${definition.command} ${documentNumber}`, opts, {
           [definition.envelope]: fields,

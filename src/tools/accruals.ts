@@ -84,7 +84,13 @@ export const ACCRUAL_TOOL_DEFINITIONS: readonly AccrualToolDefinition[] = [
       SupplierInvoiceNumber: z.number().int(),
       CostAccount: Account,
       Period: InvoicePeriod,
-      Times: z.number().int(),
+      // Times is deliberately NOT declared here: Fortnox rejects it on write
+      // ("Fältet Times är endast läsbart") and computes it from StartDate/
+      // EndDate and Period — the web UI shows it as a derived "Tot.antal" with
+      // no input field. operations/accruals.ts strips it defensively too, so a
+      // `get` response fed straight back into create/update still works, but
+      // the tool schema should not offer a field that would then be silently
+      // dropped a second time.
       SupplierInvoiceAccrualRows: z.array(AccrualRow).min(2),
     },
   },

@@ -7,6 +7,18 @@ interface AccrualDefinition {
   singleKey: string;
 }
 
+// Share write normalization with CLI previews and confirmation prompts.
+// Fortnox derives supplier-invoice Times from the schedule and rejects it on write.
+export function prepareAccrualFields(
+  envelope: string,
+  fields: Record<string, unknown>,
+): Record<string, unknown> {
+  if (envelope !== 'SupplierInvoiceAccrual') return fields;
+  const writable = { ...fields };
+  delete writable.Times;
+  return writable;
+}
+
 function createAccrualResourceOperations(
   transport: FortnoxTransport,
   definition: AccrualDefinition,
@@ -29,7 +41,7 @@ function createAccrualResourceOperations(
   async function create(fields: Record<string, unknown>) {
     const raw = await transport.request<Record<string, unknown>>(definition.endpoint, {
       method: 'POST',
-      body: { [definition.singleKey]: fields },
+      body: { [definition.singleKey]: prepareAccrualFields(definition.singleKey, fields) },
     });
     return (raw[definition.singleKey] ?? {}) as Record<string, unknown>;
   }
@@ -37,7 +49,10 @@ function createAccrualResourceOperations(
   async function update(documentNumber: string, fields: Record<string, unknown>) {
     const raw = await transport.request<Record<string, unknown>>(
       `${definition.endpoint}/${documentSegment(documentNumber)}`,
-      { method: 'PUT', body: { [definition.singleKey]: fields } },
+      {
+        method: 'PUT',
+        body: { [definition.singleKey]: prepareAccrualFields(definition.singleKey, fields) },
+      },
     );
     return (raw[definition.singleKey] ?? {}) as Record<string, unknown>;
   }

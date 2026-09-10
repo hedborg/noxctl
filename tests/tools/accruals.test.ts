@@ -3,14 +3,15 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createServer } from '../../src/index.js';
 import { ACCRUAL_TOOL_DEFINITIONS } from '../../src/tools/accruals.js';
+import type { FortnoxTransport } from '../../src/fortnox-client.js';
 
 vi.mock('../../src/auth.js', () => ({
   getValidToken: vi.fn().mockResolvedValue('mock-token'),
   getResolvedProfile: vi.fn().mockReturnValue('default'),
 }));
 
-async function setup() {
-  const server = createServer();
+async function setup(transport?: FortnoxTransport) {
+  const server = createServer(transport ? { transport } : undefined);
   const client = new Client({ name: 'accrual-test', version: '1.0.0' });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
@@ -42,7 +43,6 @@ const payloads = {
       { Account: 1790, Credit: 100 },
     ],
     SupplierInvoiceNumber: 7,
-    Times: 12,
     Total: 1200,
   },
   contract_accrual: {
@@ -126,5 +126,64 @@ describe('accrual tools', () => {
       expect(result.isError, name).toBeFalsy();
     }
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('supplier invoice accrual read-only Times', () => {
+  it('does not advertise Times on the create tool', async () => {
+    const { client } = await setup();
+    const { tools } = await client.listTools();
+    const create = tools.find((t) => t.name === 'fortnox_create_supplier_invoice_accrual');
+
+    expect(create).toBeDefined();
+    expect(Object.keys(create?.inputSchema?.properties ?? {})).not.toContain('Times');
+    // The writable fields Fortnox does derive Times from must still be offered.
+    expect(Object.keys(create?.inputSchema?.properties ?? {})).toEqual(
+      expect.arrayContaining(['StartDate', 'EndDate', 'Period']),
+    );
+  });
+
+  it('rejects Times on create and update before the mocked transport is called', async () => {
+    const request = vi.fn();
+    const { client } = await setup({ request } as unknown as FortnoxTransport);
+    const payload = { ...payloads.supplier_invoice_accrual, Times: 12, confirm: true };
+
+    for (const [name, arguments_] of [
+      ['fortnox_create_supplier_invoice_accrual', payload],
+      ['fortnox_update_supplier_invoice_accrual', { documentNumber: '7', ...payload }],
+    ] as const) {
+      const result = await client.callTool({ name, arguments: arguments_ });
+      expect(result.isError, name).toBe(true);
+    }
+
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it('accepts create and update without Times and sends the exact writable payload', async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValue({ SupplierInvoiceAccrual: { DocumentNumber: 7, Total: 1200 } });
+    const { client } = await setup({ request } as unknown as FortnoxTransport);
+    const payload = { ...payloads.supplier_invoice_accrual, confirm: true };
+
+    const createResult = await client.callTool({
+      name: 'fortnox_create_supplier_invoice_accrual',
+      arguments: payload,
+    });
+    expect(createResult.isError).toBeFalsy();
+    expect(request).toHaveBeenLastCalledWith('supplierinvoiceaccruals', {
+      method: 'POST',
+      body: { SupplierInvoiceAccrual: payloads.supplier_invoice_accrual },
+    });
+
+    const updateResult = await client.callTool({
+      name: 'fortnox_update_supplier_invoice_accrual',
+      arguments: { documentNumber: '7', ...payload },
+    });
+    expect(updateResult.isError).toBeFalsy();
+    expect(request).toHaveBeenLastCalledWith('supplierinvoiceaccruals/7', {
+      method: 'PUT',
+      body: { SupplierInvoiceAccrual: payloads.supplier_invoice_accrual },
+    });
   });
 });
